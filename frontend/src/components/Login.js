@@ -48,7 +48,9 @@ const Login = () => {
       // Update Redux state
       dispatch(setEmail(email.trim()));
       dispatch(setAuthentication(true));
-      dispatch(setToken(access));
+      dispatch(setToken({ access, refresh }));
+      localStorage.setItem('token', access);
+      localStorage.setItem('refreshToken', refresh);
 
       // Move to OTP verification
       navigate('/auth-login', {

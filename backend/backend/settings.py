@@ -19,10 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY
 # =========================================================
 
-SECRET_KEY = os.environ.get(
-    'SECRET_KEY',
-    'django-insecure-rkfvgzyx9t9ds$=5)ra#35lh!-$52%jle-or@=h67x1*f5czze'
-)
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
@@ -39,6 +36,8 @@ ALLOWED_HOSTS = [
 
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
     'https://frontend-bay-eta-u4271vwckp.vercel.app',
     'https://secure-share-iota-ruddy.vercel.app',
 ]
@@ -176,6 +175,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
     'https://frontend-bay-eta-u4271vwckp.vercel.app',
     'https://secure-share-iota-ruddy.vercel.app',
 ]

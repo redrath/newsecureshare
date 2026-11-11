@@ -25,8 +25,14 @@ export const uploadE2EEFile = async (file, encrypted) =>
     original_size: encrypted.originalSize,
   })).data;
 
-export const getE2EEFile = async (id) =>
-  (await fileapi.get(`/e2ee/files/${id}/`)).data;
+export const getE2EEFile = async (id) => {
+  const { data } = await fileapi.get(`/e2ee/files/${id}/`);
+
+  return {
+    ...data,
+    encryptedKey: data.encrypted_key,
+  };
+};
 
 export const shareE2EEFile = async (id, recipientEmail, encryptedKey) =>
   (await fileapi.post(`/e2ee/files/${id}/share/`, {

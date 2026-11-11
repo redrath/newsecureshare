@@ -2,19 +2,38 @@ import axios from 'axios';
 import store from '../redux/store';
 import { setToken, logout } from '../redux/authSlice';
 
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL ||
+  'http://127.0.0.1:8000';
+
 const api = axios.create({
-  baseURL: 'https://secureshare-v4gy.onrender.com',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
 // Request Interceptor to include Authorization headers
 api.interceptors.request.use(
-  async (config) => {
-    const { token } = store.getState().auth;
+  (config) => {
+    const publicEndpoints = [
+      '/register/',
+      '/login/',
+      '/validate-otp/',
+    ];
 
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+    const isPublicEndpoint = publicEndpoints.some(
+      (endpoint) => config.url?.includes(endpoint)
+    );
+
+    if (isPublicEndpoint) {
+      delete config.headers.Authorization;
+    } else {
+      const token = store.getState().auth.token;
+
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -44,13 +63,12 @@ api.interceptors.response.use(
 
 // Fetch QR code
 export const fetchQR = async (email) => {
-  const response = await fetch(`https://secureshare-v4gy.onrender.com/get-qr/${email}/`);
+  const response = await api.get(
+    `/get-qr/${encodeURIComponent(email)}/`,
+    { responseType: 'blob' }
+  );
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch QR code');
-  }
-
-  return await response.blob();
+  return response.data;
 };
 
 // Validate OTP

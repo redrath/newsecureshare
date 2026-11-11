@@ -14,10 +14,10 @@ const AES_GCM_IV_LENGTH = 12;
 let unlockedPrivateKey = null;
 
 const webCrypto = () => {
-  if (!globalThis.crypto?.subtle) {
+  if (!window.crypto?.subtle) {
     throw new Error("Web Crypto is unavailable. Use HTTPS or localhost.");
   }
-  return globalThis.crypto;
+  return window.crypto;
 };
 
 const toBase64 = (bytes) => {
