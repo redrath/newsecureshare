@@ -18,6 +18,7 @@ const publicEndpoints = [
   '/login/',
   '/validate-otp/',
   '/refresh-token/',
+  '/get-qr/',
 ];
 
 const isPublicEndpoint = (url = '') =>
