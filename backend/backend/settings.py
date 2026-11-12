@@ -41,6 +41,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:3001',
     'https://frontend-bay-eta-u4271vwckp.vercel.app',
     'https://secure-share-iota-ruddy.vercel.app',
+    'https://newsecureshare-frontend.vercel.app',
 ]
 
 
@@ -180,6 +181,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3001',
     'https://frontend-bay-eta-u4271vwckp.vercel.app',
     'https://secure-share-iota-ruddy.vercel.app',
+    'https://newsecureshare-frontend.vercel.app',
 ]
 
 CORS_ALLOW_CREDENTIALS = True
