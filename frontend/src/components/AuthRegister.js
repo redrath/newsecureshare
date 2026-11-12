@@ -1,20 +1,24 @@
 
 import React, { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
-import DOMPurify from 'dompurify';
+
+import { validateOtp } from '../redux/authSlice';
+import { fetchQR } from '../api/api';
+
 import '../styles/AuthRegister.css';
 import Navbar from '../components/Navbars';
 
-// Local Django backend
-const API_BASE_URL =
-  process.env.REACT_APP_API_URL ||
-  'https://newsecureshare.onrender.com';
-
 const AuthRegister = () => {
+  const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const email = location.state?.email;
+  const storedEmail = useSelector((state) => state.auth.email);
+  const authError = useSelector((state) => state.auth.error);
+  const reduxLoading = useSelector((state) => state.auth.loading);
+
+  const email = location.state?.email || storedEmail;
 
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [otp, setOtp] = useState('');
@@ -22,12 +26,12 @@ const AuthRegister = () => {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
 
-  // Fetch QR code
+  // FETCH QR CODE
   useEffect(() => {
-    let objectUrl = null;
     let cancelled = false;
+    let objectUrl = null;
 
-    const fetchQrCode = async () => {
+    const loadQRCode = async () => {
       if (!email) {
         setError('Email is missing. Please register again.');
         setLoading(false);
@@ -38,27 +42,13 @@ const AuthRegister = () => {
         setLoading(true);
         setError('');
 
-        const res = await fetch(
-          `${API_BASE_URL}/get-qr/${encodeURIComponent(email)}/`
-        );
-
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-
-          throw new Error(
-            errorData.detail || 'Failed to generate QR code.'
-          );
-        }
-
-        const contentType = res.headers.get('content-type');
-
-        if (!contentType?.includes('image/png')) {
-          throw new Error('Backend did not return a QR image.');
-        }
-
-        const blob = await res.blob();
+        const blob = await fetchQR(email);
 
         if (cancelled) return;
+
+        if (!(blob instanceof Blob) || blob.size === 0) {
+          throw new Error('Invalid QR code received from backend.');
+        }
 
         objectUrl = URL.createObjectURL(blob);
         setQrCodeUrl(objectUrl);
@@ -67,7 +57,11 @@ const AuthRegister = () => {
         console.error('QR fetching error:', err);
 
         if (!cancelled) {
-          setError(err.message);
+          setError(
+            err.response?.data?.detail ||
+            err.message ||
+            'Failed to load QR code.'
+          );
         }
       } finally {
         if (!cancelled) {
@@ -76,7 +70,7 @@ const AuthRegister = () => {
       }
     };
 
-    fetchQrCode();
+    loadQRCode();
 
     return () => {
       cancelled = true;
@@ -87,12 +81,15 @@ const AuthRegister = () => {
     };
   }, [email]);
 
-  // Validate OTP
-  const handleRegister = async () => {
-    const sanitizedOtp = DOMPurify.sanitize(otp.trim());
+  // VALIDATE REGISTRATION OTP
+  const handleRegister = async (event) => {
+    event.preventDefault();
+
+    const sanitizedOtp = otp.replace(/\D/g, '');
 
     if (!email) {
       alert('Email is missing. Please register again.');
+      navigate('/register', { replace: true });
       return;
     }
 
@@ -103,35 +100,54 @@ const AuthRegister = () => {
 
     try {
       setVerifying(true);
+      setError('');
 
-      const res = await fetch(
-        `${API_BASE_URL}/validate-otp/${encodeURIComponent(email)}/`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            otp: sanitizedOtp,
-          }),
-        }
+      const resultAction = await dispatch(
+        validateOtp({
+          email,
+          otp: sanitizedOtp,
+        })
       );
 
-      const data = await res.json();
+      if (validateOtp.fulfilled.match(resultAction)) {
+        const role = resultAction.payload.role;
 
-      if (!res.ok) {
-        throw new Error(
-          data.detail || 'Incorrect OTP. Please try again.'
+        console.log(
+          'Registration MFA successful:',
+          resultAction.payload
         );
+
+        alert('Registration and MFA verification successful!');
+
+        // Redirect according to registered role
+        switch (role) {
+          case 'user':
+            navigate('/roleuser', { replace: true });
+            break;
+
+          case 'guest':
+            navigate('/roleguest', { replace: true });
+            break;
+
+          default:
+            alert(`Unknown user role: ${role}`);
+            break;
+        }
+
+      } else {
+        const message =
+          resultAction.payload || 'Invalid OTP. Please try again.';
+
+        setError(message);
+        console.error('OTP validation failed:', message);
       }
-
-      alert('MFA verification successful!');
-
-      navigate('/home');
 
     } catch (err) {
       console.error('OTP validation error:', err);
-      alert(err.message);
+
+      setError(
+        err.message || 'Unable to validate OTP. Please try again.'
+      );
 
     } finally {
       setVerifying(false);
@@ -146,9 +162,19 @@ const AuthRegister = () => {
 
         <h3>Scan this QR Code with Google Authenticator</h3>
 
-        {loading && <p>Loading QR Code...</p>}
+        {email && (
+          <p>Registering account: {email}</p>
+        )}
 
-        {error && <p className="error-message">{error}</p>}
+        {loading && (
+          <p>Loading QR Code...</p>
+        )}
+
+        {(error || authError) && (
+          <p className="error-message">
+            {error || authError}
+          </p>
+        )}
 
         {qrCodeUrl && (
           <img
@@ -157,23 +183,46 @@ const AuthRegister = () => {
           />
         )}
 
-        <input
-          type="text"
-          placeholder="Enter 6-digit OTP"
-          maxLength={6}
-          value={otp}
-          onChange={(e) =>
-            setOtp(e.target.value.replace(/\D/g, ''))
-          }
-        />
+        <form onSubmit={handleRegister}>
+
+          <input
+            type="text"
+            placeholder="Enter 6-digit OTP"
+            maxLength={6}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={otp}
+            onChange={(event) => {
+              setOtp(
+                event.target.value.replace(/\D/g, '').slice(0, 6)
+              );
+            }}
+            required
+          />
+
+          <button
+            type="submit"
+            disabled={
+              loading ||
+              verifying ||
+              reduxLoading ||
+              !qrCodeUrl ||
+              !email
+            }
+          >
+            {verifying || reduxLoading
+              ? 'Verifying...'
+              : 'Complete Registration'}
+          </button>
+
+        </form>
 
         <button
-          onClick={handleRegister}
-          disabled={loading || verifying || !qrCodeUrl}
+          type="button"
+          onClick={() => navigate('/login', { replace: true })}
+          disabled={verifying || reduxLoading}
         >
-          {verifying
-            ? 'Verifying...'
-            : 'Complete Registration'}
+          Back to Login
         </button>
 
       </div>

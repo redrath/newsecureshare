@@ -1,97 +1,128 @@
+
 import axios from 'axios';
 import store from '../redux/store';
 import { setToken, logout } from '../redux/authSlice';
 
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL ||
+  'https://newsecureshare.onrender.com';
+
 export const fileapi = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'https://secureshare-v4gy.onrender.com',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
-// Request Interceptor to include Authorization headers
+// REQUEST INTERCEPTOR
 fileapi.interceptors.request.use(
-  async (config) => {
+  (config) => {
+    config.headers = config.headers || {};
+
     const { token } = store.getState().auth;
 
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor to handle token refresh
+// RESPONSE INTERCEPTOR
 fileapi.interceptors.response.use(
   (response) => response,
+
   async (error) => {
     const originalRequest = error.config;
-    const { refreshToken } = store.getState().auth;
 
-    if (error.response?.status === 401 && !originalRequest._retry && refreshToken) {
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    // Prevent repeated refresh attempts
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry
+    ) {
       originalRequest._retry = true;
+
+      const { refreshToken } = store.getState().auth;
+
+      if (!refreshToken) {
+        store.dispatch(logout());
+        return Promise.reject(error);
+      }
+
       try {
-        const response = await fileapi.post('/login/', { refresh: refreshToken });
+        // Use the refresh endpoint, NOT the login endpoint
+        const response = await fileapi.post(
+          '/refresh-token/',
+          { refresh: refreshToken }
+        );
+
         store.dispatch(setToken(response.data));
-        originalRequest.headers['Authorization'] = `Bearer ${response.data.access}`;
+
+        originalRequest.headers =
+          originalRequest.headers || {};
+
+        originalRequest.headers.Authorization =
+          `Bearer ${response.data.access}`;
+
         return fileapi(originalRequest);
+
       } catch (refreshError) {
         store.dispatch(logout());
+        return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );
 
-// Fetch files from the backend
+// FETCH FILES
 export const fetchFiles = async (email) => {
-  try {
-    const response = await fileapi.get(`/fileslist/${email}/`);
-    return response.data.files;
-  } catch (error) {
-    throw new Error('Error fetching files');
-  }
+  const response = await fileapi.get(
+    `/fileslist/${encodeURIComponent(email)}/`
+  );
+
+  return response.data.files;
 };
 
-
+// FETCH USERS
 export async function getUsers(email) {
-  try {
-    const response = await fileapi.get(`/users/${email}/`);
-    return response.data.users;
-  } catch (error) {
-    throw new Error('Error fetching users');
-  }
-};
+  const response = await fileapi.get(
+    `/users/${encodeURIComponent(email)}/`
+  );
 
-// Upload file to the backend
+  return response.data.users;
+}
+
+// UPLOAD FILE
 export const uploadFile = async (formData) => {
-  try {
-    const response = await fileapi.post(`/upload-file/`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
-  } catch (error) {
-    throw new Error('File already exists');
-  }
+  const response = await fileapi.post(
+    '/upload-file/',
+    formData
+  );
+
+  return response.data;
 };
 
-// Decrypt and download the file from the backend
+// DOWNLOAD FILE
 export const decryptFile = async (fileName) => {
-  try {
-    const response = await fileapi.get(`/decrypt-file/${fileName}/`, {
-      responseType: 'blob',  // Important for binary data
-    });
-    return response.data;
-  } catch (error) {
-    throw new Error('Error downloading the file');
-  }
+  const response = await fileapi.get(
+    `/decrypt-file/${encodeURIComponent(fileName)}/`,
+    { responseType: 'blob' }
+  );
+
+  return response.data;
 };
 
-
+// FETCH SHARED FILES
 export const fetchSharedFileData = async (sender) => {
-  try {
-    const response = await fileapi.get(`/shared-files/${sender}/`);
-    return response.data; // Return the entire data as-is
-  } catch (error) {
-    throw new Error("Error fetching shared files");
-  }
+  const response = await fileapi.get(
+    `/shared-files/${encodeURIComponent(sender)}/`
+  );
+
+  return response.data;
 };

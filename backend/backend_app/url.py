@@ -22,5 +22,5 @@ urlpatterns = [
     path('shared-files/<str:user>/', FileShareDataView.as_view(), name='get_users'),
     path('fileslist/<str:email>/', FileListView.as_view(), name='get_files'),
     path('serve-file/<str:filename>/', ServeFileView.as_view(), name='serve-files'),
-    path('refresh-token/', TokenManager, name='refresh_token'),
+    path('refresh-token/', TokenManager.as_view(), name='refresh_token'),
 ]

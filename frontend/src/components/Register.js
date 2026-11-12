@@ -4,8 +4,10 @@ import { useDispatch } from "react-redux";
 import {
   setEmail,
   setToken,
-  setAuthentication
+  setAuthentication,
+  setRole
 } from "../redux/authSlice";
+
 import { useNavigate } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { validateEmail, validatePassword } from "../utils";
@@ -36,7 +38,7 @@ const convertToPEM = (buffer) => {
 // Generate RSA keys and protect the private key
 const generateE2EEKeys = async (password) => {
 
-  // Generate RSA-2048 keypair
+  // STEP 1: Generate RSA-2048 keypair
   const keyPair = await window.crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
@@ -48,7 +50,7 @@ const generateE2EEKeys = async (password) => {
     ["encrypt", "decrypt"]
   );
 
-  // Export public key
+  // STEP 2: Export public key
   const publicKeyBuffer =
     await window.crypto.subtle.exportKey(
       "spki",
@@ -57,14 +59,14 @@ const generateE2EEKeys = async (password) => {
 
   const publicKeyPEM = convertToPEM(publicKeyBuffer);
 
-  // Export private key
+  // STEP 3: Export private key
   const privateKeyBuffer =
     await window.crypto.subtle.exportKey(
       "pkcs8",
       keyPair.privateKey
     );
 
-  // Generate random salt and IV
+  // STEP 4: Generate random salt and IV
   const salt = window.crypto.getRandomValues(
     new Uint8Array(16)
   );
@@ -73,7 +75,7 @@ const generateE2EEKeys = async (password) => {
     new Uint8Array(12)
   );
 
-  // Import registration password
+  // STEP 5: Import password as PBKDF2 material
   const passwordMaterial =
     await window.crypto.subtle.importKey(
       "raw",
@@ -83,7 +85,7 @@ const generateE2EEKeys = async (password) => {
       ["deriveKey"]
     );
 
-  // Derive AES-256 key using PBKDF2
+  // STEP 6: Derive AES-256 key
   const derivedKey =
     await window.crypto.subtle.deriveKey(
       {
@@ -101,7 +103,7 @@ const generateE2EEKeys = async (password) => {
       ["encrypt"]
     );
 
-  // Encrypt private key using AES-256-GCM
+  // STEP 7: Encrypt private key using AES-256-GCM
   const encryptedPrivateKey =
     await window.crypto.subtle.encrypt(
       {
@@ -112,7 +114,7 @@ const generateE2EEKeys = async (password) => {
       privateKeyBuffer
     );
 
-  // Package protected private key information
+  // STEP 8: Package protected private key
   const protectedPrivateKey = {
     version: 1,
     format: "PKCS8",
@@ -131,6 +133,7 @@ const generateE2EEKeys = async (password) => {
   };
 };
 
+// REGISTER COMPONENT
 const Register = () => {
 
   const [email, setEmailInput] = useState("");
@@ -146,36 +149,38 @@ const Register = () => {
   const sanitizeInput = (input) =>
     DOMPurify.sanitize(input.trim());
 
-  const handleRegister = async () => {
+  const handleRegister = async (event) => {
+    event.preventDefault();
 
     const sanitizedEmail = sanitizeInput(email).toLowerCase();
     const sanitizedName = sanitizeInput(name);
     const sanitizedAccess = sanitizeInput(access);
 
+    // VALIDATION
     if (!validateEmail(sanitizedEmail)) {
-      alert("Invalid email format");
+      alert("Invalid email format.");
       return;
     }
 
     if (!validatePassword(password)) {
       alert(
-        "Password must contain 8 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special character"
+        "Password must contain at least 8 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special character."
       );
       return;
     }
 
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      alert("Passwords do not match.");
       return;
     }
 
     if (!sanitizedName || !sanitizedAccess) {
-      alert("Please enter your name and select a role");
+      alert("Please enter your name and select a role.");
       return;
     }
 
     if (!window.isSecureContext || !window.crypto?.subtle) {
-      alert("Secure browser cryptography is unavailable.");
+      alert("Secure browser cryptography is unavailable. Use HTTPS.");
       return;
     }
 
@@ -191,7 +196,7 @@ const Register = () => {
       console.log("RSA keypair generated.");
       console.log("Private key protected successfully.");
 
-      // STEP 2: Send registration data and protected keys
+      // STEP 2: Send registration data to backend
       const response = await api.post("/register/", {
         email: sanitizedEmail,
         name: sanitizedName,
@@ -202,34 +207,47 @@ const Register = () => {
         protected_private_key: e2eeKeys.protected_private_key
       });
 
-      const { access: accessToken, refresh } = response.data;
+      const {
+        access: accessToken,
+        refresh,
+        role
+      } = response.data;
 
-      // STEP 3: Preserve existing authentication flow
-      document.cookie =
-        `access=${accessToken}; Secure; SameSite=Strict;`;
+      // Verify backend token response
+      if (!accessToken || !refresh) {
+        throw new Error("Registration response is missing authentication tokens.");
+      }
 
-      document.cookie =
-        `refresh=${refresh}; Secure; SameSite=Strict;`;
-
+      // STEP 3: Store user details and tokens
       dispatch(setEmail(sanitizedEmail));
-      dispatch(setAuthentication(true));
+      dispatch(setRole(role || sanitizedAccess));
+
       dispatch(setToken({
         access: accessToken,
         refresh: refresh
       }));
 
-      alert("Registration successful! Please complete MFA.");
+      // IMPORTANT: OTP must succeed before authentication
+      dispatch(setAuthentication(false));
+
+      // STEP 4: Navigate to registration OTP verification
+      alert("Registration successful! Please complete MFA verification.");
 
       navigate("/auth-register", {
-        state: { email: sanitizedEmail }
+        replace: true,
+        state: {
+          email: sanitizedEmail
+        }
       });
 
-    } catch (err) {
+    } catch (error) {
 
-      console.error("Registration error:", err);
+      console.error("Registration error:", error);
+      console.error("Backend response:", error.response?.data);
 
       alert(
-        err.response?.data?.detail ||
+        error.response?.data?.detail ||
+        error.message ||
         "Registration or E2EE key generation failed."
       );
 
@@ -247,53 +265,72 @@ const Register = () => {
 
           <h1>Register</h1>
 
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmailInput(e.target.value)}
-            placeholder="Email"
-          />
+          <form onSubmit={handleRegister}>
 
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setNameInput(e.target.value)}
-            placeholder="Name"
-          />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="Email"
+              autoComplete="email"
+              required
+            />
 
-          <select
-            value={access}
-            onChange={(e) => setAccessLevel(e.target.value)}
-          >
-            <option value="">Select Role</option>
-            <option value="user">User</option>
-            <option value="guest">Guest</option>
-          </select>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setNameInput(e.target.value)}
+              placeholder="Name"
+              autoComplete="name"
+              required
+            />
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-          />
+            <select
+              value={access}
+              onChange={(e) => setAccessLevel(e.target.value)}
+              required
+            >
+              <option value="">Select Role</option>
+              <option value="user">User</option>
+              <option value="guest">Guest</option>
+            </select>
 
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm Password"
-          />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="new-password"
+              required
+            />
 
-          <button
-            onClick={handleRegister}
-            disabled={isRegistering}
-          >
-            {isRegistering ? "Generating Keys..." : "Register"}
-          </button>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm Password"
+              autoComplete="new-password"
+              required
+            />
+
+            <button
+              type="submit"
+              disabled={isRegistering}
+            >
+              {isRegistering
+                ? "Generating Keys..."
+                : "Register"}
+            </button>
+
+          </form>
 
           <p>
             Already have an account?{" "}
-            <button onClick={() => navigate("/login")}>
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              disabled={isRegistering}
+            >
               Login
             </button>
           </p>

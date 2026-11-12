@@ -1,38 +1,39 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
+
 import { validateOtp } from '../redux/authSlice';
+
 import '../styles/AuthLogin.css';
 import Navbar from '../components/Navbars';
-// Utility function to sanitize input
-const sanitizeInput = (input) => {
-  if (typeof input !== 'string') return input;
-  return input.replace(/[^0-9]/g, ''); // Ensures only numbers are allowed
-};
 
 const AuthLogin = () => {
   const [otp, setOtp] = useState('');
+
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { email } = location.state || {};
-  const authError = useSelector((state) => state.auth.error);
 
-  // Prevent back & forward navigation
-  useEffect(() => {
-    window.history.pushState(null, '', window.location.href);
-    const handlePopState = () => {
-      navigate('/home', { replace: true }); // Redirect to home on back press
-    };
+  const {
+    email: storedEmail,
+    error: authError,
+    loading,
+  } = useSelector((state) => state.auth);
 
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [navigate]);
+  // Get email from navigation state or Redux
+  const email = location.state?.email || storedEmail;
 
-  const handleOtpValidation = async () => {
-    const sanitizedOtp = sanitizeInput(otp);
+  const handleOtpValidation = async (event) => {
+    event.preventDefault();
+
+    const sanitizedOtp = otp.replace(/\D/g, '');
+
+    if (!email) {
+      alert('Email information is missing. Please log in again.');
+      navigate('/login', { replace: true });
+      return;
+    }
 
     if (sanitizedOtp.length !== 6) {
       alert('Please enter a valid 6-digit OTP.');
@@ -40,49 +41,99 @@ const AuthLogin = () => {
     }
 
     try {
-      console.log('Dispatching validateOtp with:', { email, otp: sanitizedOtp });
-      const resultAction = await dispatch(validateOtp({ email, otp: sanitizedOtp }));
+      const resultAction = await dispatch(
+        validateOtp({
+          email,
+          otp: sanitizedOtp,
+        })
+      );
 
       if (validateOtp.fulfilled.match(resultAction)) {
-        alert("Login Successfully");
         console.log('OTP validation successful:', resultAction.payload);
-        const { role } = resultAction.payload;
+
+        const role = resultAction.payload.role;
+
+        alert('Login successful!');
 
         switch (role) {
           case 'user':
-            navigate('/roleuser', { replace: true }); // Prevent back navigation
+            navigate('/roleuser', { replace: true });
             break;
+
           case 'guest':
-            navigate('/roleguest', { replace: true }); // Prevent back navigation
+            navigate('/roleguest', { replace: true });
             break;
+
           default:
-            alert('Unknown role');
+            alert(`Unknown user role: ${role}`);
+            break;
         }
       } else {
-        console.log('OTP validation failed:', resultAction.payload);
-        alert(resultAction.payload || 'Invalid OTP');
+        console.error('OTP validation failed:', resultAction.payload);
+
+        alert(resultAction.payload || 'Invalid OTP. Please try again.');
       }
     } catch (error) {
-      console.error('Error validating OTP:', error);
-      alert('Error validating OTP. Please try again.');
+      console.error('OTP validation error:', error);
+      alert('Unable to validate OTP. Please try again.');
     }
   };
 
-  return (<div><Navbar />
-    <div className="auth-login-container">
-      
-      <h2>Multi-Factor Authentication</h2>
-      {authError && <p className="error-message">{authError}</p>}
-      <input
-        type="text"
-        value={otp}
-        onChange={(e) => setOtp(e.target.value)}
-        placeholder="Enter OTP"
-        maxLength="6"
-        pattern="[0-9]*"
-      />
-      <button onClick={handleOtpValidation}>Validate OTP</button>
-    </div></div>
+  return (
+    <div>
+      <Navbar />
+
+      <div className="auth-login-container">
+        <h2>Multi-Factor Authentication</h2>
+
+        <p>
+          Enter the 6-digit verification code from your
+          authenticator application.
+        </p>
+
+        {email && (
+          <p className="otp-email">
+            Verification for: {email}
+          </p>
+        )}
+
+        {authError && (
+          <p className="error-message">
+            {authError}
+          </p>
+        )}
+
+        <form onSubmit={handleOtpValidation}>
+          <input
+            type="text"
+            value={otp}
+            onChange={(event) => {
+              setOtp(event.target.value.replace(/\D/g, '').slice(0, 6));
+            }}
+            placeholder="Enter OTP"
+            maxLength={6}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            required
+          />
+
+          <button
+            type="submit"
+            disabled={loading || !email}
+          >
+            {loading ? 'Verifying...' : 'Validate OTP'}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          onClick={() => navigate('/login', { replace: true })}
+          disabled={loading}
+        >
+          Back to Login
+        </button>
+      </div>
+    </div>
   );
 };
 

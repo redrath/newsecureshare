@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 import store from '../redux/store';
 import { setToken, logout } from '../redux/authSlice';
@@ -11,20 +12,23 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Request Interceptor to include Authorization headers
+// Endpoints that do not require an existing access token
+const publicEndpoints = [
+  '/register/',
+  '/login/',
+  '/validate-otp/',
+  '/refresh-token/',
+];
+
+const isPublicEndpoint = (url = '') =>
+  publicEndpoints.some((endpoint) => url.includes(endpoint));
+
+// Attach access token to protected requests
 api.interceptors.request.use(
   (config) => {
-    const publicEndpoints = [
-      '/register/',
-      '/login/',
-      '/validate-otp/',
-    ];
+    config.headers = config.headers || {};
 
-    const isPublicEndpoint = publicEndpoints.some(
-      (endpoint) => config.url?.includes(endpoint)
-    );
-
-    if (isPublicEndpoint) {
+    if (isPublicEndpoint(config.url)) {
       delete config.headers.Authorization;
     } else {
       const token = store.getState().auth.token;
@@ -39,24 +43,53 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor to handle token refresh
+// Refresh expired access tokens for protected requests
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    const { refreshToken } = store.getState().auth;
 
-    if (error.response?.status === 401 && !originalRequest._retry && refreshToken) {
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    // Do not refresh public endpoint requests
+    if (isPublicEndpoint(originalRequest.url)) {
+      return Promise.reject(error);
+    }
+
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry
+    ) {
       originalRequest._retry = true;
+
+      const refreshToken = store.getState().auth.refreshToken;
+
+      if (!refreshToken) {
+        store.dispatch(logout());
+        return Promise.reject(error);
+      }
+
       try {
-        const response = await api.post('/refresh-token/', { refresh: refreshToken });
-        store.dispatch(setToken(response.data));
-        originalRequest.headers['Authorization'] = `Bearer ${response.data.access}`;
+        const refreshResponse = await api.post(
+          '/refresh-token/',
+          { refresh: refreshToken }
+        );
+
+        store.dispatch(setToken(refreshResponse.data));
+
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization =
+          `Bearer ${refreshResponse.data.access}`;
+
         return api(originalRequest);
       } catch (refreshError) {
         store.dispatch(logout());
+        return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );
@@ -73,9 +106,12 @@ export const fetchQR = async (email) => {
 
 // Validate OTP
 export const validateOTP = async (email, otp) => {
-    const response = await api.post(`/validate-otp/${email}/`, { otp });
-    return response.data;
-};
+  const response = await api.post(
+    `/validate-otp/${encodeURIComponent(email)}/`,
+    { otp }
+  );
 
+  return response.data;
+};
 
 export default api;

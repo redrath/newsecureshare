@@ -1,47 +1,76 @@
+
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import '../styles/RoleUser.css'; // Import the CSS file
+import { useSelector } from 'react-redux';
+
+import '../styles/RoleUser.css';
 import Navbar from '../components/Navbar';
 
 const RoleUser = () => {
   const navigate = useNavigate();
 
-  // Prevent Back & Forward Navigation
+  const { isAuthenticated, token, role } = useSelector(
+    (state) => state.auth
+  );
+
+  // Protect the user dashboard
   useEffect(() => {
-    window.history.pushState(null, '', window.location.href);
-    const handlePopState = () => {
-      navigate('/home', { replace: true }); // Redirect to home on back press
-    };
+    if (!isAuthenticated || !token) {
+      navigate('/login', { replace: true });
+      return;
+    }
 
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [navigate]);
-
-  const handleDownloadFile = () => {
-    navigate('/filedownload'); // Navigate to download file page
-  };
+    if (role && role !== 'user') {
+      navigate('/home', { replace: true });
+    }
+  }, [isAuthenticated, token, role, navigate]);
 
   const handleUploadFile = () => {
-    navigate('/fileupload'); // Navigate to upload file page
+    navigate('/fileupload');
+  };
+
+  const handleDownloadFile = () => {
+    navigate('/filedownload');
   };
 
   const handleShareFile = () => {
-    navigate('/fileshare'); // Navigate to share file page
+    navigate('/fileshare');
   };
 
   const handleShowFile = () => {
-    navigate('/SharedFile'); // Navigate to shared file page
+    navigate('/SharedFile');
   };
 
+  // Avoid rendering the dashboard while redirecting
+  if (!isAuthenticated || !token || (role && role !== 'user')) {
+    return null;
+  }
+
   return (
-    <div><Navbar />
-      <h1>User Options</h1>
-      <button onClick={handleUploadFile}>Upload File</button>
-      <button onClick={handleDownloadFile}>Download File</button>
-      <button onClick={handleShareFile}>Share File</button>
-      <button onClick={handleShowFile}>Shared File</button>
+    <div>
+      <Navbar />
+
+      <div className="role-user-container">
+        <h1>User Options</h1>
+
+        <div className="role-user-buttons">
+          <button onClick={handleUploadFile}>
+            Upload File
+          </button>
+
+          <button onClick={handleDownloadFile}>
+            Download File
+          </button>
+
+          <button onClick={handleShareFile}>
+            Share File
+          </button>
+
+          <button onClick={handleShowFile}>
+            Shared Files
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

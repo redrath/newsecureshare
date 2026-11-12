@@ -66,17 +66,45 @@ class HomeView:
 # TOKEN MANAGER
 # ==================================================
 
-class TokenManager:
+
+from rest_framework_simplejwt.exceptions import TokenError
+
+class TokenManager(APIView):
+    permission_classes = [AllowAny]
 
     @staticmethod
     def generate_tokens(user):
-
         refresh = RefreshToken.for_user(user)
 
         return (
             str(refresh.access_token),
             str(refresh)
         )
+
+    def post(self, request):
+        refresh_token = request.data.get("refresh")
+
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            refresh = RefreshToken(refresh_token)
+            access_token = str(refresh.access_token)
+
+            return Response(
+                {"access": access_token},
+                status=status.HTTP_200_OK
+            )
+
+        except TokenError:
+            return Response(
+                {"detail": "Invalid or expired refresh token"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
 
 
 # ==================================================
