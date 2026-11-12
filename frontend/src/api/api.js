@@ -4,7 +4,7 @@ import { setToken, logout } from '../redux/authSlice';
 
 const API_BASE_URL =
   process.env.REACT_APP_API_URL ||
-  'http://127.0.0.1:8000';
+  'https://newsecureshare.onrender.com';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
